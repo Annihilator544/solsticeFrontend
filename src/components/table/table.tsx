@@ -1,12 +1,12 @@
+import { usefilteredData } from "@/store/use-filter-data";
 import { columns } from "./columns"
 import { DataTable } from "./data-table"
-import { useTableData } from "@/store/use-table-data";
 
 export default function DemoPage() {
-  const { tableData } = useTableData();
+  const { filteredData } = usefilteredData();
   return (
     <div className="">
-      <DataTable columns={columns} data={tableData} />
+      <DataTable columns={columns} data={filteredData} />
     </div>
   )
 }

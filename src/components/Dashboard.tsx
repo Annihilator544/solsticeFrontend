@@ -15,20 +15,87 @@ import {
 } from 'recharts';
 import DemoPage from './table/table';
 import { useMaxSpend } from '@/store/use-max-spend';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import MaxSpends from './MaxSpends';
 import { toast } from 'sonner';
 import { ModeToggle } from './ModeToggle';
+import { usefilteredData } from '@/store/use-filter-data';
 import { useTableData } from '@/store/use-table-data';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
+import CategoryConfig from './CategoryConfig';
+import { Button } from './ui/button';
+
+type FilterRange = 'all' | 'yesterday' | 'week' | 'month'
 
 const PaymentDashboard = () => {
   // Original payment dummyData
     // const { userPreference } = useUserPreference();
     // console.log(userPreference);
+  const [filterRange, setFilterRange] = useState<FilterRange>('all');
+  const { filteredData, setFilteredData } = usefilteredData();
   const { tableData } = useTableData();
   const { setSpend, spend, userMaxSpend } = useMaxSpend();
+
+  function parseDate(dateStr: string) {
+    const [dayStr, monthStr, yearStr] = dateStr.split('-');
+    const day = parseInt(dayStr, 10);
+    const month = parseInt(monthStr, 10) - 1; // zero-based
+    const year = 2000 + parseInt(yearStr, 10); // e.g. '25' -> 2025
+
+    return new Date(year, month, day);
+  }
+
+  useEffect(() => {
+    if (!tableData || tableData.length === 0) {
+      setFilteredData([]);
+      return;
+    }
+
+    if (filterRange === 'all') {
+      // No filtering
+      setFilteredData(tableData);
+      return;
+    }
+
+    const now = new Date();
+    const fromDate = new Date(); // by default, 'from' is now
+    let toDate = new Date();   // 'to' is also now
+
+    if (filterRange === 'yesterday') {
+      // We want only data from yesterday's 00:00:00 to 23:59:59
+      // Start = yesterday at 00:00
+      fromDate.setHours(0, 0, 0, 0);
+      fromDate.setDate(fromDate.getDate() - 1);
+
+      // End = fromDate + 1 day
+      toDate = new Date(fromDate);
+      toDate.setDate(toDate.getDate() + 1);
+
+    } else if (filterRange === 'week') {
+      // Past 7 days
+      fromDate.setDate(now.getDate() - 7);
+      // toDate stays as now
+    } else if (filterRange === 'month') {
+      // Past 30 days
+      fromDate.setDate(now.getDate() - 30);
+      // toDate stays as now
+    }
+
+    const newFiltered = tableData.filter((item) => {
+      const itemDate = parseDate(item.date);
+
+      // "Yesterday" => itemDate >= fromDate && itemDate < toDate
+      // "Week"/"Month" => itemDate >= fromDate && itemDate <= now
+      return filterRange === 'yesterday'
+        ? itemDate >= fromDate && itemDate < toDate
+        : itemDate >= fromDate && itemDate <= now;
+    });
+
+    setFilteredData(newFiltered);
+  }, [tableData, filterRange, setFilteredData]);
   // Process data for class distribution
-  const classSummary = tableData.reduce(
+  const classSummary = filteredData.reduce(
     (acc: Record<string, { name: string; count: number; total: number }>, item) => {
       if (!acc[item.class]) {
         acc[item.class] = {
@@ -65,7 +132,7 @@ const PaymentDashboard = () => {
   const classDistribution = Object.values(classSummary);
 
   // Process data for payment receivers (top recipients)
-  const receiverSummary = tableData.reduce(
+  const receiverSummary = filteredData.reduce(
     (
       acc: Record<string, { name: string; fullName: string; count: number; total: number }>,
       item
@@ -91,7 +158,7 @@ const PaymentDashboard = () => {
     .slice(0, 5);
 
   // Date summary
-  const dateSummary = tableData.reduce(
+  const dateSummary = filteredData.reduce(
     (acc: Record<string, { name: string; count: number; total: number }>, item) => {
       if (!acc[item.date]) {
         acc[item.date] = {
@@ -120,13 +187,44 @@ const PaymentDashboard = () => {
   ];
 
   // Calculate total spent
-  const totalSpent = tableData.reduce((sum, item) => sum + item.amount, 0);
-  const totalTransactions = tableData.length;
+  const totalSpent = filteredData.reduce((sum, item) => sum + item.amount, 0);
+  const totalTransactions = filteredData.length;
   const averageTransaction = Math.round(totalSpent / totalTransactions);
 
   return (
     <div className="p-10 space-y-6">
-      <ModeToggle />
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold">Payment Dashboard</h1>
+        <div className="flex items-center space-x-2">
+        <Dialog>
+          <DialogTrigger>
+            <Button variant="outline" size="sm">
+              <span className="mr-2">Configure Categories</span>
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Are you absolutely sure?</DialogTitle>
+              <DialogDescription className='max-h-[80vh] overflow-y-auto'>
+                <CategoryConfig />
+              </DialogDescription>
+            </DialogHeader>
+          </DialogContent>
+        </Dialog>
+        <Select value={filterRange} onValueChange={(val: FilterRange) => setFilterRange(val)}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue placeholder="Select range" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="yesterday">Yesterday</SelectItem>
+              <SelectItem value="week">Past Week</SelectItem>
+              <SelectItem value="month">Past Month</SelectItem>
+            </SelectContent>
+          </Select>
+          <ModeToggle />
+        </div>
+      </div>
       <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
@@ -152,13 +250,13 @@ const PaymentDashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₹{Math.max(...tableData.map((item) => item.amount))}
+              ₹{Math.max(...filteredData.map((item) => item.amount))}
             </div>
             <p className="text-xs text-muted-foreground">
               {
-                tableData.find(
+                filteredData.find(
                   (item) =>
-                    item.amount === Math.max(...tableData.map((item) => item.amount))
+                    item.amount === Math.max(...filteredData.map((item) => item.amount))
                 )?.receiver || 'N/A'
               }
             </p>
