@@ -33,9 +33,30 @@ const PaymentDashboard = () => {
     // const { userPreference } = useUserPreference();
     // console.log(userPreference);
   const [filterRange, setFilterRange] = useState<FilterRange>('all');
+  const [text, setText] = useState('');
   const { filteredData, setFilteredData } = usefilteredData();
   const { tableData } = useTableData();
   const { setSpend, spend, userMaxSpend } = useMaxSpend();
+
+  useEffect(() => {
+    async function fetchData() {
+    const response = await fetch(
+      "https://fwnxjxqg6hlzlxmnmbq3kihf6i0yrrvx.lambda-url.eu-west-2.on.aws/", 
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dataContext: tableData // or tableData.slice(15) if you only want partial data
+        })
+      }
+    );
+    const data = await response.json();
+    console.log(data);
+    setText(data.choices[0].message.content);
+    }
+    fetchData();
+  }
+  , [tableData, setText]);
 
   function parseDate(dateStr: string) {
     const [dayStr, monthStr, yearStr] = dateStr.split('-');
@@ -263,7 +284,14 @@ const PaymentDashboard = () => {
           </CardContent>
         </Card>
       </div>
-
+      {text&&<Card className="overflow-hidden">
+        <CardHeader className="pb-0">
+          <CardTitle className="text-sm font-medium">AI Insights</CardTitle>
+        </CardHeader>
+        <CardContent className=" overflow-y-auto">
+          <p>{text}</p>
+        </CardContent>
+      </Card>}
       <DemoPage />
 
       <Tabs defaultValue="overview" className="w-full">
